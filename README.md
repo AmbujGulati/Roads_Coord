@@ -1,6 +1,5 @@
 # Roards_Coord
-Built on top of https://github.com/anvaka/city-roads.
-Renders Roads around specific input coordinates with specified radius
+Built on top of https://github.com/anvaka/city-roads. It renders roads around user-input coordinates with user-input radius.
 
 ## How it is made?
 The data is fetched from OpenStreetMap using overpass API. While that API is free (as long as you follow ODbL licenses), it can be rate-limited and sometimes it is slow. To increase efficency, it is requested to render a small radius around the specified coordinates ~0.1 - 2km.
