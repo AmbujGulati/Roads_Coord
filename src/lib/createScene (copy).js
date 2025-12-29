@@ -64,7 +64,7 @@ export default function createScene(canvas) {
      * match. If no matches found - returns undefined.
      */
     queryLayer,
-
+    
     getRenderer() {
       return scene;
     },
@@ -128,60 +128,12 @@ export default function createScene(canvas) {
      */
     load,
 
-    /**
-     * NEW: Loads roads around a given coordinate by converting (lat, lon, radiusKm)
-     * into a bbox and reusing the existing `load()` pipeline.
-     */
-    loadByCoordinates,
-
     saveToPNG,
 
     saveToSVG
   };
 
   return eventify(sceneAPI); // Public bit is over. Below are just implementation details.
-
-  /**
-   * NEW: Convert center point + radius (km) into a bbox:
-   * [southLat, westLon, northLat, eastLon]
-   */
-  function getBBoxFromCenter(lat, lon, radiusKm = 3) {
-    if (!Number.isFinite(lat) || lat < -90 || lat > 90) throw new Error('Invalid latitude');
-    if (!Number.isFinite(lon) || lon < -180 || lon > 180) throw new Error('Invalid longitude');
-
-    const r = Number.isFinite(radiusKm) && radiusKm > 0 ? radiusKm : 3;
-
-    // Approx conversions:
-    const kmToLatDelta = (km) => km / 110.574;
-    const kmToLonDelta = (km, atLat) => km / (111.320 * Math.cos(atLat * Math.PI / 180));
-
-    const dLat = kmToLatDelta(r);
-    const dLon = kmToLonDelta(r, lat);
-
-    return [
-      String(lat - dLat), // south
-      String(lon - dLon), // west
-      String(lat + dLat), // north
-      String(lon + dLon), // east
-    ];
-  }
-
-  /**
-   * NEW: Public helper to load by coordinates.
-   * By default it loads roads (Query.Road) and clears existing layers first.
-   */
-  function loadByCoordinates(lat, lon, radiusKm = 3, queryFilter = Query.Road) {
-    const bbox = getBBoxFromCenter(lat, lon, radiusKm);
-
-    // This makes it behave like "go to this location".
-    // Remove this line if you want the bbox to overlay on top of existing layers.
-    sceneAPI.clear();
-
-    // `place` becomes layer.id (layer.id = options.place), so label it nicely:
-    const place = `@${Number(lat).toFixed(5)},${Number(lon).toFixed(5)} r=${Number(radiusKm)}km`;
-
-    return sceneAPI.load(queryFilter, { bbox, place });
-  }
 
   /**
    * Experimental API. Can be changed/removed at any point.
@@ -203,7 +155,7 @@ export default function createScene(canvas) {
       console.error(e);
       layer.destroy();
     });
-
+  
     add(layer);
     return layer;
   }
@@ -270,7 +222,7 @@ export default function createScene(canvas) {
     if (e.shiftKey) {
       slowDownZoom = true;
       if (camera.setSpeed) camera.setSpeed(0.1);
-    }
+    } 
   }
 
   function onKeyUp(e) {
@@ -280,4 +232,3 @@ export default function createScene(canvas) {
     }
   }
 }
-

@@ -20,36 +20,37 @@
 
         <h3>Export</h3>
         <div class='row'>
-          <a href='#' @click.prevent='zazzleMugPrint()' class='col'>Onto a mug</a> 
+          <a href='#' @click.prevent='zazzleMugPrint()' class='col'>Onto a mug</a>
           <span class='col c-2'>
             Print what you see onto a mug. <br/>Get a unique gift of your favorite city.
           </span>
         </div>
         <div class='preview-actions message' v-if='zazzleLink || generatingPreview'>
-            <div v-if='zazzleLink' class='padded popup-help'>
-              If your browser has blocked the new window, <br/>please <a :href='zazzleLink' target='_blank'>click here</a>
-              to open it.
-            </div>
-            <div v-if='generatingPreview' class='loading-container'>
-              <loading-icon></loading-icon>
-              Generating preview url...
-            </div>
+          <div v-if='zazzleLink' class='padded popup-help'>
+            If your browser has blocked the new window, <br/>please <a :href='zazzleLink' target='_blank'>click here</a>
+            to open it.
+          </div>
+          <div v-if='generatingPreview' class='loading-container'>
+            <loading-icon></loading-icon>
+            Generating preview url...
+          </div>
         </div>
         <div class='row'>
-          <a href='#'  @click.prevent='toPNGFile' class='col'>As an image (.png)</a> 
+          <a href='#'  @click.prevent='toPNGFile' class='col'>As an image (.png)</a>
           <span class='col c-2'>
             Save the current screen as a raster image.
           </span>
         </div>
-        
+
         <div class='row'>
-          <a href='#'  @click.prevent='toSVGFile' class='col'>As a vector (.svg)</a> 
+          <a href='#'  @click.prevent='toSVGFile' class='col'>As a vector (.svg)</a>
           <span class='col c-2'>
             Save the current screen as a vector image.
           </span>
         </div>
+
         <div v-if='false' class='row'>
-          <a href='#' @click.prevent='toProtobuf' class='col'>To a .PBF file</a> 
+          <a href='#' @click.prevent='toProtobuf' class='col'>To a .PBF file</a>
           <span class='col c-2'>
             Save the current data as a protobuf message. For developer use only.
           </span>
@@ -58,20 +59,29 @@
         <h3>About</h3>
         <div>
           <p>This website was created by <a href='https://twitter.com/anvaka' target='_blank'>@anvaka</a>.
-          It downloads roads from OpenStreetMap and renders them with WebGL.
+            It downloads roads from OpenStreetMap and renders them with WebGL.
           </p>
           <p>
-           You can find the entire <a href='https://github.com/anvaka/city-roads'>source code here</a>. 
-           If you love this website you can also <a href='https://www.paypal.com/paypalme2/anvakos/3'>buy me a coffee</a> or 
-           <a href='https://www.patreon.com/anvaka'>support me on Patreon</a>, but you don't have to.
+            You can find the entire <a href='https://github.com/anvaka/city-roads'>source code here</a>.
+            If you love this website you can also <a href='https://www.paypal.com/paypalme2/anvakos/3'>buy me a coffee</a> or
+            <a href='https://www.patreon.com/anvaka'>support me on Patreon</a>, but you don't have to.
           </p>
         </div>
       </div>
     </div>
   </div>
 
-  <editable-label v-if='placeFound' v-model='name' class='city-name' :printable='true' :style='{color: labelColorRGBA}' :overlay-manager='overlayManager'></editable-label>
-  <div v-if='placeFound' class='license printable can-drag' :style='{color: labelColorRGBA}'>data <a href='https://www.openstreetmap.org/about/' target="_blank" :style='{color: labelColorRGBA}'>© OpenStreetMap</a></div>
+  <editable-label
+    v-if='placeFound'
+    v-model='name'
+    class='city-name'
+    :printable='true'
+    :style='{color: labelColorRGBA}'
+    :overlay-manager='overlayManager'></editable-label>
+
+  <div v-if='placeFound' class='license printable can-drag' :style='{color: labelColorRGBA}'>
+    data <a href='https://www.openstreetmap.org/about/' target="_blank" :style='{color: labelColorRGBA}'>© OpenStreetMap</a>
+  </div>
 </template>
 
 <script>
@@ -108,6 +118,10 @@ export default {
   },
   data() {
     return {
+      // pin state (session only)
+      requestedCoord: null, // {lat, lon}
+
+      // original state
       placeFound: false,
       name: '',
       zazzleLink: null,
@@ -115,7 +129,7 @@ export default {
       showSettings: false,
       settingsOpen: false,
       labelColor: config.getLabelColor().toRgb(),
-      backgroundColor: config.getBackgroundColor().toRgb(),
+      backgroundColor: { r: 255, g: 255, b: 255, a: 1 },
       layers: []
     }
   },
@@ -131,7 +145,6 @@ export default {
     this.overlayManager = createOverlayManager();
   },
   beforeUnmount() {
-    debugger;
     this.overlayManager.dispose();
     this.dispose();
     bus.off('scene-transform', this.handleSceneTransform);
@@ -141,17 +154,29 @@ export default {
   methods: {
     dispose() {
       if (this.scene) {
-        this.scene.dispose();
+        this.scene.dispose(); // clears added layers [file:50]
+        this.scene = null;
         window.scene = null;
       }
     },
+
     toggleSettings() {
       this.showSettings = !this.showSettings;
     },
+
     handleSceneTransform() {
       this.zazzleLink = null;
     },
-    onGridLoaded(grid) {
+
+    onGridLoaded(payload) {
+      // Support:
+      // - city mode: emit(grid)
+      // - coords mode: emit({grid, requestedCoord})
+      const grid = (payload && payload.grid) ? payload.grid : payload;
+      const requestedCoord = (payload && payload.requestedCoord) ? payload.requestedCoord : null;
+
+      if (requestedCoord) this.requestedCoord = requestedCoord;
+
       if (grid.isArea) {
         appState.set('areaId', grid.id);
         appState.unset('osm_id');
@@ -161,21 +186,53 @@ export default {
         appState.set('osm_id', grid.id);
         appState.set('bbox', grid.bboxString);
       }
+
       this.placeFound = true;
       this.name = grid.name.split(',')[0];
-      let canvas = getCanvas();
+
+      const canvas = getCanvas();
       canvas.style.visibility = 'visible';
 
+      // prevent multiple scenes
+      this.dispose();
+
       this.scene = createScene(canvas);
+      this.setBackgroundColor(this.backgroundColor);
       this.scene.on('layer-added', this.updateLayers);
       this.scene.on('layer-removed', this.updateLayers);
-
       window.scene = this.scene;
 
-      let gridLayer = new GridLayer();
+      // roads layer
+      const gridLayer = new GridLayer();
       gridLayer.id = 'lines';
       gridLayer.setGrid(grid);
-      this.scene.add(gridLayer)
+      this.scene.add(gridLayer);
+
+      // inject pin into grid layer (option 3)
+      if (this.requestedCoord) {
+        const project = grid.getProjector(); // expects {lon, lat} [file:199]
+        const p = project({
+          lon: this.requestedCoord.lon,
+          lat: this.requestedCoord.lat
+        }); // [file:199]
+
+        const rect = grid.getProjectedRect();
+        const pinSize = Math.max(rect.width, rect.height) / 200;
+
+        console.log('coord', this.requestedCoord);
+        console.log('grid rect', rect);
+        console.log('pin projected', p);
+        const r = this.scene.getRenderer();
+        console.log('camera', r.getCameraController && r.getCameraController());
+        console.log('keys', Object.keys(r.getCameraController ? r.getCameraController() : {}));
+        
+
+        if (Number.isFinite(p.x) && Number.isFinite(p.y)) {
+          gridLayer.setPin(p.x, p.y, pinSize);
+        } else {
+          console.warn('Pin projection failed:', this.requestedCoord, p);
+        }
+      }
     },
 
     startOver() {
@@ -183,6 +240,8 @@ export default {
       appState.unsetPlace();
       appState.unset('q');
       appState.enableCache();
+
+      this.requestedCoord = null;
 
       this.dispose();
       this.placeFound = false;
@@ -199,12 +258,11 @@ export default {
       scene.saveToPNG(this.name)
     },
 
-    toSVGFile(e) { 
+    toSVGFile(e) {
       scene.saveToSVG(this.name)
     },
 
     updateLayers() {
-      // TODO: This method likely doesn't belong here
       let newLayers = [];
       let lastLayer = 0;
       let renderer = this.scene.getRenderer();
@@ -246,11 +304,12 @@ export default {
       this.backgroundColor = newBackground.toRgb();
       this.updateLayers()
     },
-    // TODO: I need two background methods?
+
     updateBackground() {
       this.setBackgroundColor(this.backgroundColor)
       this.zazzleLink = null;
     },
+
     setBackgroundColor(c) {
       this.scene.background = c;
       document.body.style.backgroundColor = toRGBA(c);
@@ -278,10 +337,10 @@ export default {
       });
     }
   }
-}
+};
 
 function toRGBA(c) {
-    return `rgba(${c.r}, ${c.g}, ${c.b}, ${c.a})`;
+  return `rgba(${c.r}, ${c.g}, ${c.b}, ${c.a})`;
 }
 
 function recordOpenClick(link) {
@@ -297,6 +356,7 @@ function recordOpenClick(link) {
 <style lang='stylus'>
 @import('./vars.styl');
 
+/* unchanged styles below */
 #app {
   margin: 8px;
   max-height: 100vh;
@@ -364,12 +424,12 @@ function recordOpenClick(link) {
 }
 
 .col {
-    display: flex;
-    flex: 1;
-    select {
-      margin-left: 14px;
-    }
+  display: flex;
+  flex: 1;
+  select {
+    margin-left: 14px;
   }
+}
 .row {
   margin-top: 4px;
   display: flex;
@@ -501,5 +561,5 @@ a:focus {
     bottom: 8px;
   }
 }
-
 </style>
+

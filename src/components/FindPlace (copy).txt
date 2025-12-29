@@ -4,46 +4,13 @@
     <h3 class='site-header'>city roads</h3>
     <p class='description'>This website renders every single road within a city</p>
   </div>
-
   <form v-on:submit.prevent="onSubmit" class='search-box'>
-    <!-- City mode input -->
-    <input
-      v-if="searchMode === 'city'"
-      class='query-input'
-      v-model='enteredInput'
-      type='text'
-      placeholder='Enter a city name to start'
-      ref='input'
-    >
-
-    <!-- Coords mode inputs -->
-    <template v-else>
-      <input class='query-input' v-model='coordLat' type='text' placeholder='Lat (e.g. 28.6139)'>
-      <input class='query-input' v-model='coordLon' type='text' placeholder='Lon (e.g. 77.2090)'>
-      <input class='query-input' v-model='coordRadiusKm' type='text' placeholder='Radius km (e.g. 5)'>
-    </template>
-
-    <!-- Toggle button -->
-    <a class='search-submit' href='#' @click.prevent='toggleMode'>
-      {{ searchMode === 'city' ? 'Coords' : 'City' }}
-    </a>
-
-    <!-- Submit button -->
-    <a
-      type='submit'
-      class='search-submit'
-      href='#'
-      @click.prevent='onSubmit'
-      v-if='canSubmit && !hideInput'
-    >
-      {{mainActionText}}
-    </a>
+      <input class='query-input' v-model='enteredInput' type='text' placeholder='Enter a city name to start' ref='input'>
+      <a type='submit' class='search-submit' href='#' @click.prevent='onSubmit' v-if='enteredInput && !hideInput'>{{mainActionText}}</a>
   </form>
-
   <div v-if='showWarning' class='prompt message note shadow'>
     Note: Large cities may require 200MB+ of data transfer and may need a powerful device to render.
   </div>
-
   <div class='results' v-if='!loading'>
     <div v-if='suggestionsLoaded && suggestions.length' class='suggestions shadow'>
       <div class='prompt message'>
@@ -68,7 +35,6 @@
       Didn't find any roads. Try a different query?
     </div>
   </div>
-
   <div v-if='error' class='error message shadow'>
     <div>Sorry, we were not able to download data from the OpenStreetMap.
     It could be very busy at the moment processing other requests. <br/><br/> Please bookmark this website and <a href='#' @click.prevent="retry">try again</a> later?</div>
@@ -77,7 +43,6 @@
       <a :href='getBugReportURL(error)' :title='"report error: " + error' target='_blank'>report this bug</a>
     </div>
   </div>
-
   <div v-if='loading' class='loading message shadow'>
     <loading-icon></loading-icon>
     <span>{{loading}}</span>
@@ -118,7 +83,6 @@ export default {
     let hasValidArea = restoreStateFromQueryString();
 
     return {
-      // existing:
       enteredInput,
       loading: null,
       lastCancel: null,
@@ -129,30 +93,13 @@ export default {
       hideInput: false,
       noRoads: false,
       clicked: false,
-      showWarning: hasValidArea,
+      showWarning: hasValidArea, 
       mainActionText: hasValidArea ? 'Download Area' : FIND_TEXT,
-      suggestions: [],
-
-      // NEW:
-      searchMode: 'city',     // 'city' | 'coords'
-      coordLat: '',
-      coordLon: '',
-      coordRadiusKm: '5'
+      suggestions: []
     }
   },
-
-  computed: {
-    canSubmit() {
-      if (this.searchMode === 'city') return this.enteredInput && this.enteredInput.trim().length > 0;
-      return (this.coordLat && this.coordLon);
-    }
-  },
-
   watch: {
     enteredInput() {
-      // Only apply city-search reset behavior in city mode:
-      if (this.searchMode !== 'city') return;
-
       // As soon as they change it, we need not to download:
       this.mainActionText = FIND_TEXT;
       this.showWarning = false;
@@ -160,48 +107,18 @@ export default {
       appState.unsetPlace();
     }
   },
-
   mounted() {
-    this.$refs.input && this.$refs.input.focus();
+    this.$refs.input.focus();
     if (queryState.get('auto')) {
       this.onSubmit();
     }
   },
-
   beforeUnmount() {
     if (this.lastCancel) this.lastCancel();
     clearInterval(this.notifyStillLoading);
   },
-
   methods: {
-    toggleMode() {
-      this.searchMode = (this.searchMode === 'city') ? 'coords' : 'city';
-
-      // reset UI state
-      this.cancelRequest();
-      this.suggestions = [];
-      this.noRoads = false;
-      this.error = false;
-      this.showWarning = false;
-      this.hideInput = false;
-
-      // button text
-      this.mainActionText = (this.searchMode === 'city') ? FIND_TEXT : 'Download Area';
-
-      // focus back to city input
-      this.$nextTick(() => {
-        if (this.searchMode === 'city' && this.$refs.input) this.$refs.input.focus();
-      });
-    },
-
     onSubmit() {
-      // NEW: coordinate mode submit
-      if (this.searchMode === 'coords') {
-        this.submitCoordinates();
-        return;
-      }
-
-      // existing city-search flow
       queryState.set('q', this.enteredInput);
       this.cancelRequest()
       this.suggestions = [];
@@ -230,81 +147,9 @@ export default {
             }, 50)
           } else {
               this.suggestionsLoaded = true;
-              this.suggestions = suggestions;
+              this.suggestions = suggestions; 
           }
         });
-    },
-
-    // NEW: loads bbox around center coordinate with radiusKm
-    submitCoordinates() {
-      const lat = Number.parseFloat(this.coordLat);
-      const lon = Number.parseFloat(this.coordLon);
-      const radiusKm = Number.parseFloat(this.coordRadiusKm);
-
-      // reset state (similar to onSubmit)
-      this.cancelRequest();
-      this.suggestions = [];
-      this.noRoads = false;
-      this.error = false;
-      this.showWarning = false;
-
-      if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
-        this.error = new Error('Invalid latitude (must be between -90 and 90).');
-        return;
-      }
-      if (!Number.isFinite(lon) || lon < -180 || lon > 180) {
-        this.error = new Error('Invalid longitude (must be between -180 and 180).');
-        return;
-      }
-
-      const r = (Number.isFinite(radiusKm) && radiusKm > 0) ? radiusKm : 5;
-
-      // Convert km radius -> degree deltas (approx).
-      const dLat = r / 110.574;
-      const dLon = r / (111.320 * Math.cos(lat * Math.PI / 180));
-
-      const bbox = [
-        lat - dLat, // south
-        lon - dLon, // west
-        lat + dLat, // north
-        lon + dLon  // east
-      ];
-
-      this.loading = 'Connecting to OpenStreetMap...'
-      this.restartLoadingMonitor();
-
-      Query.runFromOptions(new LoadOptions({
-        wayFilter: Query.Road,
-        bbox
-      }), this.generateNewProgressToken())
-      .then(grid => {
-        this.loading = null;
-        if (!grid.hasRoads()) {
-          this.noRoads = true;
-        } else {
-          grid.setName(`@${lat.toFixed(5)},${lon.toFixed(5)} r=${r}km`);
-          grid.setId(`coords:${lat.toFixed(5)},${lon.toFixed(5)}:${r}`);
-          grid.setIsArea(false);
-          grid.setBBox(serializeBBox(bbox));
-          this.$emit('loaded', {
-           grid,
-           requestedCoord: {lat,lon}
-          });
-        }
-      }).catch(err => {
-        if (err.cancelled) {
-          this.loading = null;
-          return;
-        }
-        console.error(err);
-        this.error = err;
-        this.loading = null;
-        this.suggestions = [];
-      })
-      .finally(() => {
-        clearInterval(this.notifyStillLoading);
-        this.stillLoading = 0;
-      });
     },
 
     getBugReportURL(error) {
@@ -314,6 +159,7 @@ export default {
         body = 'Hello, an error occurred on the website:\n\n```\n' +
           error.toString() + '\n```\n\n Can you please help?';
       }
+
       return `https://github.com/anvaka/city-roads/issues/new?title=${title}&body=${encodeURIComponent(body)}`
     },
 
@@ -383,8 +229,8 @@ export default {
 
     useOSM(suggestion) {
       this.loading = 'Connecting to OpenStreetMap...'
-
-      // it may take a while to load data.
+      
+      // it may take a while to load data. 
       this.restartLoadingMonitor();
       Query.runFromOptions(new LoadOptions({
         wayFilter: Query.Road,
@@ -487,6 +333,7 @@ function parseBBox(bboxStr) {
   let bbox = bboxStr.split(',').map(x => Number.parseFloat(x)).filter(x => Number.isFinite(x));
   return bbox.length === 4 ? bbox : null;
 }
+
 </script>
 
 <style lang="stylus">
@@ -662,5 +509,5 @@ input {
     }
   }
 }
-</style>
 
+</style>

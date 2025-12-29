@@ -1,6 +1,6 @@
 import config from '../config.js';
 import tinycolor from 'tinycolor2';
-import {WireCollection} from 'w-gl';
+import { WireCollection } from 'w-gl';
 
 let counter = 0;
 
@@ -27,7 +27,6 @@ export default class GridLayer {
   set lineWidth(newValue) {
     this._lineWidth = newValue;
     if (!this.lines || !this.scene) return;
-
     this.lines.setLineWidth(newValue);
   }
 
@@ -42,7 +41,42 @@ export default class GridLayer {
     this.hidden = false;
     this.id = 'paths_' + counter;
     this._lineWidth = 1;
+
+    // --- NEW: optional pin injected into same WireCollection ---
+    this._pin = null;     // {x, y} in projected coords
+    this._pinSize = null; // projected units
+
     counter += 1;
+  }
+
+  // --- NEW API ---
+  setPin(x, y, size) {
+    this._pin = { x, y };
+    this._pinSize = size;
+
+    // Rebuild geometry (important because WireCollection is pre-sized)
+    if (this.scene && this.lines) this.scene.removeChild(this.lines);
+    this.lines = null;
+
+    if (this.scene && !this.hidden) {
+      this.buildLinesCollection();
+      this.scene.appendChild(this.lines);
+      this.scene.renderFrame(true);
+    }
+  }
+
+  clearPin() {
+    this._pin = null;
+    this._pinSize = null;
+
+    if (this.scene && this.lines) this.scene.removeChild(this.lines);
+    this.lines = null;
+
+    if (this.scene && !this.hidden) {
+      this.buildLinesCollection();
+      this.scene.appendChild(this.lines);
+      this.scene.renderFrame(true);
+    }
   }
 
   getGridProjector() {
@@ -50,12 +84,10 @@ export default class GridLayer {
   }
 
   getQueryBounds() {
-    const {grid} = this;
+    const { grid } = this;
     if (grid) {
       if (grid.queryBounds) return grid.queryBounds;
-      if (grid.isArea) return {
-        areaId: grid.id
-      };
+      if (grid.isArea) return { areaId: grid.id };
     }
   }
 
@@ -69,61 +101,70 @@ export default class GridLayer {
   getViewBox() {
     if (!this.grid) return null;
 
-    let {width, height} = this.grid.getProjectedRect();
+    let { width, height } = this.grid.getProjectedRect();
     let initialSceneSize = Math.max(width, height) / 4;
     return {
-      left:  -initialSceneSize,
-      top:    initialSceneSize,
-      right:  initialSceneSize,
+      left: -initialSceneSize,
+      top: initialSceneSize,
+      right: initialSceneSize,
       bottom: -initialSceneSize,
     };
   }
 
   moveTo(x, y = 0) {
     console.warn('Please use moveBy() instead. The moveTo() is under construction');
-    // this.dx = x;
-    // this.dy = y;
-
-    // this._transferTransform();
   }
 
   moveBy(dx, dy = 0) {
     this.dx = dx;
     this.dy = dy;
-
     this._transferTransform();
   }
 
   buildLinesCollection() {
     if (this.lines) return this.lines;
-
     let grid = this.grid;
-    let lines = new WireCollection(grid.wayPointCount, {
+
+    // +2 segments if pin is enabled (horizontal + vertical)
+    const extra = this._pin ? 2 : 0;
+    let lines = new WireCollection(grid.wayPointCount + extra, {
       width: this._lineWidth,
       allowColors: false,
-      is3D: false
+      is3D: false,
     });
-    grid.forEachWay(function(from, to) {
-      lines.add({from, to});
+
+    grid.forEachWay(function (from, to) {
+      lines.add({ from, to });
     });
+
+    // --- NEW: Inject pin segments into same collection ---
+    if (this._pin && Number.isFinite(this._pin.x) && Number.isFinite(this._pin.y)) {
+      const rect = grid.getProjectedRect();
+      const s = this._pinSize != null ? this._pinSize : (Math.max(rect.width, rect.height) / 200);
+
+      const x = this._pin.x;
+      const y = this._pin.y;
+
+      lines.add({ from: { x: x - s, y, z: 0 }, to: { x: x + s, y, z: 0 } });
+      lines.add({ from: { x, y: y - s, z: 0 }, to: { x, y: y + s, z: 0 } });
+    }
+
     let color = tinycolor(this._color).toRgb();
     lines.color = toRatioColor(color);
     lines.id = this.id;
 
     this.lines = lines;
+    return this.lines;
   }
 
   destroy() {
     if (!this.scene || !this.lines) return;
-
-    // TODO: This should remove the grid layer too. Need to clean up how
-    // scene interacts with grid layers.
     this.scene.removeChild(this.lines);
   }
 
   bindToScene(scene) {
     if (this.scene && this.lines) {
-      console.error('You seem to be adding this layer twice...')
+      console.error('You seem to be adding this layer twice...');
     }
 
     this.scene = scene;
@@ -139,7 +180,6 @@ export default class GridLayer {
     if (this.hidden) return;
     this.hidden = true;
     if (!this.scene || !this.grid) return;
-
     this.scene.removeChild(this.lines);
   }
 
@@ -150,7 +190,6 @@ export default class GridLayer {
       console.log('Layer will be shown when grid is available');
       return;
     }
-
     this.scene.appendChild(this.lines);
   }
 
@@ -166,5 +205,6 @@ export default class GridLayer {
 }
 
 function toRatioColor(c) {
-  return {r: c.r/0xff, g: c.g/0xff, b: c.b/0xff, a: c.a}
+  return { r: c.r / 0xff, g: c.g / 0xff, b: c.b / 0xff, a: c.a };
 }
+
